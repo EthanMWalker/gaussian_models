@@ -7,6 +7,7 @@ from rnn_gmm.utils import MLP
 class RnnGmm(nn.Module):
 
   def __init__(self, dim, hidden_dim, num_layers, n_comps, device):
+    super(RnnGmm, self).__init__()
     self.rnn = nn.RNN(2*dim+1, hidden_dim, num_layers, batch_first=True)
     self.hidden_dim = hidden_dim
     self.device = device

@@ -5,9 +5,9 @@ from torchvision.transforms import transforms
 import pickle
 from tqdm import tqdm
 
-from gmm import RnnGmm
+from rnn_gmm import RnnGmm
 
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 
@@ -15,7 +15,9 @@ def get_mnist(batch_size):
   transform = transforms.Compose(
     [
       transforms.ToTensor(),
-      transforms.Normalize((0.1307,), (0.30811,))
+      transforms.Normalize((0.1307,), (0.30811,)),
+      transforms.Lambda(lambda x: torch.flatten(x)),
+      transforms.Lambda(lambda x: torch.unsqueeze(x,0))
     ]
   )
 
@@ -48,28 +50,22 @@ def train(model, train_loader, lr, num_epochs=10, save_iters=5):
         y = y.to(device)
 
         optimizer.zero_grad()
-        loss = model.log_prob(x)
+        o, loss = model(x)
         loss = -loss.mean()
         loss.backward()
         optimizer.step()
 
         running_loss += loss.item()
 
+        progress.set_description(
+            f'l: {loss.item()} lr: {lr:.8} e: {epoch}'
+          )
+        progress.update()
+
         if i % 100 == 99:
           losses.append(running_loss / 100)
           running_loss = 0
           
-      for i , (x, y) in enumerate(train_loader):
-        x = x.to(device)
-        y = y.to(device)
-        z, log_det = model(x)
-        model.update_gmm(z)
-
-      progress.set_description(
-          f'l: {model.num_layers} lr: {lr:.8} e: {epoch}'
-        )
-      progress.update()
-
       if epoch % save_iters == 0:
         torch.save(
           {
@@ -77,7 +73,7 @@ def train(model, train_loader, lr, num_epochs=10, save_iters=5):
             'optimizer_state_dict': optimizer.state_dict(),
             'epoch': epoch,
             'loss': loss
-          }, f'chkpt/backup/mnist_gmm_{model.num_layers}_{lr:.8}_{epoch}.tar'
+          }, f'chkpt/backup/rnngmm_{lr:.8}_{epoch}.tar'
         )
       
   
@@ -91,12 +87,12 @@ if __name__ == '__main__':
   train_loader, test_loader, train_set, test_set = get_mnist(batch_size)
 
   # for layers in [2**i for i in [2,3,4,5,6]]:
-  for layers in [1,2,4,8,16, 32]:
-    for lr in [1e-10, 1e-8]:
-      n_epochs = 100
+  for layers in [4]:
+    for lr in [1e-5, 1e-10, 1e-8]:
+      n_epochs = 25
       
-      model = RealNVP(
-        1, 5, layers, 10, (1,28,28), device, res_net_layers
+      model = RnnGmm(
+        28*28, 28, layers, 10, device
       ).to(device)
 
       model, losses = train(model, train_loader, lr, n_epochs, 100)
@@ -104,7 +100,7 @@ if __name__ == '__main__':
       torch.save(
         {
         'model_state_dict': model.state_dict()
-        }, f'chkpt/mnist_gmm_{layers}_{lr:.8}.tar'
+        }, f'chkpt/rnngmm_{lr:.8}.tar'
       )
 
       # model.load_state_dict(torch.load('chkpt/test.tar')['model_state_dict'])
@@ -115,5 +111,5 @@ if __name__ == '__main__':
         'losses': losses
       }
 
-      with open(f'chkpt/mnist_gmm_samples_{layers}_{lr:.8}.pickle','wb') as out:
+      with open(f'chkpt/rnngmm_{lr:.8}.pickle','wb') as out:
         pickle.dump(out_dict, out)
