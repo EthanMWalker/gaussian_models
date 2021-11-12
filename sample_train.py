@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import torchvision as tv
 from torchvision.transforms import transforms
 
@@ -6,7 +8,7 @@ import pickle
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from rnn_gmm import RnnGmm
+from rnn_gmm import RnnGmm, NTCrossEntropyLoss
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -38,24 +40,35 @@ def get_mnist(batch_size):
 
   return train_loader, test_loader, train_set, test_set
 
-def train(model, train_loader, lr, num_epochs=10, save_iters=5):
+def train(model, train_loader, lr, batch_size, num_epochs=10, save_iters=5):
 
   optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+  criterion = NTCrossEntropyLoss(.5, batch_size, device)
   losses = []
   running_loss = 0
   len_epoch = len(train_loader)
 
   with tqdm(total=num_epochs*len(train_loader)) as progress:
     for epoch in range(num_epochs):
+      running_loss = 0.
       for i , (x, y) in enumerate(train_loader):
         x = x.to(device)
         y = y.to(device)
+        
+        if x.size(0) != batch_size:
+          continue
 
         mask = torch.round(torch.rand(x.size(1))).to(device)
 
         optimizer.zero_grad()
-        o, loss = model(x, mask)
-        loss = -loss.mean()
+        sample = model.sample(x.size(0), x, mask)
+        bool_mask = torch.gt(1-mask,0)
+        compare = x[:,bool_mask]
+        to_pad = x.size(1) - sample.size(1)
+        sample = F.pad(sample, (1,to_pad), 'constant', 0)
+        compare = F.pad(compare, (1,to_pad), 'constant', 0)
+        loss = criterion(sample, compare)
+        loss = loss.mean()
         loss.backward()
         optimizer.step()
 
@@ -66,7 +79,7 @@ def train(model, train_loader, lr, num_epochs=10, save_iters=5):
           )
         progress.update()
 
-        if (i + epoch*len_epoch) % 100 == 99:
+        if i % 10 == 9:
           losses.append(running_loss / 100)
           running_loss = 0
           
@@ -77,7 +90,7 @@ def train(model, train_loader, lr, num_epochs=10, save_iters=5):
             'optimizer_state_dict': optimizer.state_dict(),
             'epoch': epoch,
             'loss': loss
-          }, f'chkpt/backup/rnngmm_{lr:.8}_{epoch}.tar'
+          }, f'chkpt/backup/large_rnngmm_{lr:.8}_{epoch}.tar'
         )
       
   
@@ -90,35 +103,35 @@ if __name__ == '__main__':
   train_loader, test_loader, train_set, test_set = get_mnist(batch_size)
 
   # for layers in [2**i for i in [2,3,4,5,6]]:
-  for layers in [4,6]:
-    for lr in [1e-5, 1e-10, 1e-8]:
-      n_epochs = 25
+  for layers in [32]:
+    for lr in [1e-5]:
+      n_epochs = 100
       
       model = RnnGmm(
         28*28, 28, layers, 10, device
       ).to(device)
-
-      model, losses = train(model, train_loader, lr, n_epochs, 100)
+      
+      model, losses = train(model, train_loader, lr, batch_size, n_epochs, 20)
 
       torch.save(
         {
         'model_state_dict': model.state_dict()
-        }, f'chkpt/rnngmm_{lr:.8}.tar'
+        }, f'chkpt/large_rnngmm_{lr:.8}.tar'
       )
 
       # model.load_state_dict(torch.load('chkpt/test.tar')['model_state_dict'])
 
-      # samples = model.sample(100).detach().cpu().numpy()
+      samples = model.sample(100).detach().cpu().numpy()
       out_dict = {
-        # 'sample': samples,
+        'sample': samples,
         'losses': losses
       }
 
-      with open(f'chkpt/rnngmm_{lr:.8}.pickle','wb') as out:
+      with open(f'chkpt/large_rnngmm_{lr:.8}.pickle','wb') as out:
         pickle.dump(out_dict, out)
       
       try:
         plt.plot(losses)
-        plt.savefig(f'chkpt/images/rnngmm_{lr:.8}.png')
+        plt.savefig(f'chkpt/images/large_rnngmm_{lr:.8}.png')
       except:
         print('there was an exception')
