@@ -19,23 +19,20 @@ class RnnGmm(nn.Module):
     self.mlp = MLP(hidden_dim, hidden_dim*4, 3*n_comps)
     self.n_comps = n_comps
     self.dim = dim
-  
-  # def log_prob(self, x, means, covs):
-  #   prec = torch.rsqrt(F.softplus(covs))
-  #   log_p = torch.sum((means*means + x*x - 2*x*means) * (prec**2), dim=1, keepdim=True)
-  #   log_det = torch.sum(torch.log(prec), dim=1, keepdim=True)
 
-  #   return -.5 * (self.dim * np.log(2.*np.pi) + log_p) + log_det
-
-  # write a log sum exp with the following things c + log( sum( exp(x_i - c))) where c is reasonable maybe max(x)
+  def logsumexp(self, x, dim, keepdim=True):
+    c = torch.max(x, dim=dim).values
+    exp_ = torch.transpose(torch.exp(torch.transpose(x,0,1) - c),0,1)
+    sum_exp = torch.sum(exp_,dim=dim)
+    return c + torch.log(sum_exp)
 
   def log_prob(self, x, means, covs, pis):
     covs = F.softplus(covs)
     pis = F.relu(pis)
-    pis = torch.transpose(torch.transpose(pis,0,1), torch.sum(pis,dim=1),0,1)
+    pis = torch.transpose(torch.transpose(pis,0,1) * torch.sum(pis,dim=1),0,1)
     exp_cov = torch.exp(1./torch.sqrt(covs))
     numer = -.5*(means*means + x*x - 2*x*means) 
-    log_p = torch.logsumexp(numer / covs * exp_cov, dim=1, keepdim=True)
+    log_p = self.logsumexp(numer / covs * exp_cov, dim=1, keepdim=True)
 
     return log_p
   

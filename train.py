@@ -90,9 +90,9 @@ if __name__ == '__main__':
   train_loader, test_loader, train_set, test_set = get_mnist(batch_size)
 
   # for layers in [2**i for i in [2,3,4,5,6]]:
-  for layers in [4,6]:
-    for lr in [1e-5, 1e-10, 1e-8]:
-      n_epochs = 25
+  for layers in [32]:
+    for lr in [1e-5, 1e-8]:
+      n_epochs = 100
       
       model = RnnGmm(
         28*28, 28, layers, 10, device
@@ -108,9 +108,9 @@ if __name__ == '__main__':
 
       # model.load_state_dict(torch.load('chkpt/test.tar')['model_state_dict'])
 
-      # samples = model.sample(100).detach().cpu().numpy()
+      samples = model.sample(100).detach().cpu().numpy()
       out_dict = {
-        # 'sample': samples,
+        'sample': samples,
         'losses': losses
       }
 
