@@ -55,7 +55,7 @@ def train(model, train_loader, lr, num_epochs=10, save_iters=5):
 
         optimizer.zero_grad()
         o, loss = model(x, mask)
-        loss = -loss.mean()
+        loss = loss.mean()
         loss.backward()
         optimizer.step()
 
@@ -90,8 +90,8 @@ if __name__ == '__main__':
   train_loader, test_loader, train_set, test_set = get_mnist(batch_size)
 
   # for layers in [2**i for i in [2,3,4,5,6]]:
-  for layers in [32]:
-    for lr in [1e-5, 1e-8]:
+  for layers in [64]:
+    for lr in [1e-5]:
       n_epochs = 100
       
       model = RnnGmm(
